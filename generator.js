@@ -1,5 +1,5 @@
 /**
- * Arcania Generator Manager (REFACTORED)
+ * Arcania Generator Manager (REFACTORED WITH MIN REQUIREMENTS)
  * Handles all functionality for the generator.html page.
  * Modernized to remove deprecated execCommand fallback.
  */
@@ -18,6 +18,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const includeLowercase = document.getElementById('include-lowercase');
     const includeNumbers = document.getElementById('include-numbers');
     const includeSymbols = document.getElementById('include-symbols');
+
+    // New minimum requirement elements
+    const minNumbersSlider = document.getElementById('min-numbers');
+    const minNumbersValue = document.getElementById('min-numbers-value');
+    const minSymbolsSlider = document.getElementById('min-symbols');
+    const minSymbolsValue = document.getElementById('min-symbols-value');
+    const minRequirementsSection = document.querySelector('.min-requirements-section');
 
     // Passphrase Elements
     const wordCountSlider = document.getElementById('word-count');
@@ -51,6 +58,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return randomValue % max;
     }
 
+    /**
+     * Shuffle array using Fisher-Yates algorithm
+     */
+    function shuffleArray(array) {
+        const shuffled = [...array];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = getRandom(i + 1);
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled;
+    }
+
     function generatePassword() {
         const length = parseInt(lengthSlider.value);
         const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -59,21 +78,56 @@ document.addEventListener('DOMContentLoaded', () => {
         const syms = '!@#$%^&*()_+-=[]{}|;:,.<>?';
 
         let charset = '';
-        if (includeUppercase.checked) charset += upper;
-        if (includeLowercase.checked) charset += lower;
-        if (includeNumbers.checked) charset += nums;
-        if (includeSymbols.checked) charset += syms;
+        let guaranteedChars = [];
         
+        // Build charset and guaranteed characters
+        if (includeUppercase.checked) {
+            charset += upper;
+        }
+        if (includeLowercase.checked) {
+            charset += lower;
+        }
+        if (includeNumbers.checked) {
+            charset += nums;
+            // Add minimum required numbers
+            const minNums = parseInt(minNumbersSlider.value);
+            for (let i = 0; i < minNums; i++) {
+                guaranteedChars.push(nums[getRandom(nums.length)]);
+            }
+        }
+        if (includeSymbols.checked) {
+            charset += syms;
+            // Add minimum required symbols
+            const minSyms = parseInt(minSymbolsSlider.value);
+            for (let i = 0; i < minSyms; i++) {
+                guaranteedChars.push(syms[getRandom(syms.length)]);
+            }
+        }
+        
+        // If no charset selected, default to lowercase
         if (charset === '') {
             charset = lower;
             includeLowercase.checked = true;
         }
 
-        let password = '';
-        for (let i = 0; i < length; i++) {
-            password += charset[getRandom(charset.length)];
+        // Check if guaranteed characters exceed password length
+        if (guaranteedChars.length > length) {
+            // Truncate guaranteed characters to fit password length
+            guaranteedChars = guaranteedChars.slice(0, length);
         }
-        outputEl.value = password;
+
+        // Generate remaining characters
+        let password = [...guaranteedChars];
+        const remainingLength = length - guaranteedChars.length;
+        
+        for (let i = 0; i < remainingLength; i++) {
+            password.push(charset[getRandom(charset.length)]);
+        }
+
+        // Shuffle the password to distribute guaranteed characters randomly
+        password = shuffleArray(password);
+        
+        outputEl.value = password.join('');
     }
 
     function generatePassphrase() {
@@ -103,10 +157,57 @@ document.addEventListener('DOMContentLoaded', () => {
         outputEl.value = `${adj}${noun}${num}`;
     }
 
+    // --- UI Update Functions ---
+    function updateMinRequirementsVisibility() {
+        const showNumbers = includeNumbers.checked;
+        const showSymbols = includeSymbols.checked;
+        
+        // Show/hide the entire minimum requirements section
+        if (showNumbers || showSymbols) {
+            minRequirementsSection.style.display = 'block';
+        } else {
+            minRequirementsSection.style.display = 'none';
+        }
+        
+        // Show/hide individual requirement items
+        const numberRequirement = minRequirementsSection.querySelector('.min-requirement-item:nth-child(1)');
+        const symbolRequirement = minRequirementsSection.querySelector('.min-requirement-item:nth-child(2)');
+        
+        numberRequirement.style.display = showNumbers ? 'block' : 'none';
+        symbolRequirement.style.display = showSymbols ? 'block' : 'none';
+    }
+
+    function validateMinRequirements() {
+        const passwordLength = parseInt(lengthSlider.value);
+        const minNums = parseInt(minNumbersSlider.value);
+        const minSyms = parseInt(minSymbolsSlider.value);
+        
+        const totalMinRequired = (includeNumbers.checked ? minNums : 0) + 
+                                (includeSymbols.checked ? minSyms : 0);
+        
+        // Adjust minimum requirements if they exceed password length
+        if (totalMinRequired > passwordLength) {
+            const ratio = passwordLength / totalMinRequired;
+            
+            if (includeNumbers.checked) {
+                const adjustedMinNums = Math.floor(minNums * ratio);
+                minNumbersSlider.value = adjustedMinNums;
+                minNumbersValue.textContent = adjustedMinNums;
+            }
+            
+            if (includeSymbols.checked) {
+                const adjustedMinSyms = Math.floor(minSyms * ratio);
+                minSymbolsSlider.value = adjustedMinSyms;
+                minSymbolsValue.textContent = adjustedMinSyms;
+            }
+        }
+    }
+
     // --- Main Controller ---
     function generate() {
         switch (currentGenerator) {
             case 'password':
+                validateMinRequirements();
                 generatePassword();
                 break;
             case 'passphrase':
@@ -150,6 +251,28 @@ document.addEventListener('DOMContentLoaded', () => {
             generate();
         });
 
+        // New minimum requirements event listeners
+        minNumbersSlider.addEventListener('input', () => {
+            minNumbersValue.textContent = minNumbersSlider.value;
+            generate();
+        });
+
+        minSymbolsSlider.addEventListener('input', () => {
+            minSymbolsValue.textContent = minSymbolsSlider.value;
+            generate();
+        });
+
+        // Update visibility when checkboxes change
+        includeNumbers.addEventListener('change', () => {
+            updateMinRequirementsVisibility();
+            generate();
+        });
+
+        includeSymbols.addEventListener('change', () => {
+            updateMinRequirementsVisibility();
+            generate();
+        });
+
         regenerateBtn.addEventListener('click', () => {
             generate();
             regenerateBtn.style.transform = 'rotate(180deg)';
@@ -178,5 +301,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Initialization ---
     setupEventListeners();
+    updateMinRequirementsVisibility();
     generate();
 });
